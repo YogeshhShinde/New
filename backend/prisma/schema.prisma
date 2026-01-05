@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User & Auth
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hashed
+  name      String
+  role      String     @default("STAFF") // OWNER, ACCOUNTANT, STAFF
+  companies CompanyUser[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id            String   @id @default(uuid())
+  name          String
+  gstin         String?  // India GST Number
+  address       String?
+  phone         String?
+  email         String?
+  logoUrl       String?
+  financialYear String   @default("2024-2025")
+  users         CompanyUser[]
+  customers     Customer[]
+  products      Product[]
+  invoices      Invoice[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model CompanyUser {
+  id        String @id @default(uuid())
+  userId    String
+  companyId String
+  user      User   @relation(fields: [userId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+  role      String    // Company specific role
+}
+
+// Master Data
+model Customer {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  gstin     String?
+  phone     String?
+  email     String?
+  address   String?
+  state     String   // Important for IGST vs CGST/SGST logic
+  invoices  Invoice[]
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  name        String
+  description String?
+  hsnCode     String?  // HSN/SAC
+  taxRate     Float    @default(18.0) // GST %
+  unit        String   @default("PCS")
+  price       Decimal // Selling Price
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  invoiceItems InvoiceItem[]
+}
+
+// Billing
+model Invoice {
+  id             String        @id @default(uuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id])
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  invoiceNumber  String        // Sequence: INV-001, etc.
+  date           DateTime      @default(now())
+  dueDate        DateTime?
+  status         String @default("DRAFT") // DRAFT, SENT, PAID, CANCELLED
+  
+  // Financials
+  subTotal       Decimal
+  taxAmount      Decimal // Total GST
+  discountAmount Decimal       @default(0)
+  totalAmount    Decimal // Grand Total
+  
+  items          InvoiceItem[]
+  payments       Payment[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([companyId, invoiceNumber])
+}
+
+model InvoiceItem {
+  id        String  @id @default(uuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  
+  description String // Snapshotted name
+  hsnCode     String?
+  quantity    Int
+  unitPrice   Decimal
+  taxRate     Float   // Tax rate at time of invoice
+  taxAmount   Decimal
+  total       Decimal // (Qty * Price) + Tax
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id])
+  amount        Decimal
+  mode          String   // CASH, UPI, BANK_TRANSFER
+  reference     String?       // Transaction ID
+  date          DateTime      @default(now())
+}
+
+// Enums removed for SQLite compatibility
+
+// enum Role {
+//   OWNER
+//   ACCOUNTANT
+//   STAFF
+// }
+
+// enum InvoiceStatus {
+//   DRAFT
+//   SENT
+//   PAID
+//   PARTIALLY_PAID
+//   CANCELLED
+// }
+
+// enum PaymentMode {
+//   CASH
+//   UPI
+//   BANK_TRANSFER
+//   CHEQUE
+// }
